@@ -1,4 +1,4 @@
-# wsBNN : Weight-sharing Bayesian Neural Network for Feature Selection
+# wsBNN: Weight-sharing Bayesian Neural Network for Feature Selection
 
 This repository contains the implementation of the **Weight-sharing Bayesian Neural Network (wsBNN)** model for feature selection. The code is designed to work with various datasets. Follow the steps below to set up the environment and run the model.
 
