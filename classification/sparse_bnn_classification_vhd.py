@@ -1,9 +1,9 @@
-# Modified: 25 May 2024
+# Modified: 1 Aug 2025
 # Author: Akanksha Mishra
 import torch
 import torch.nn as nn
 import numpy as np
-from layer import SpikeNSlabLayer, NormalLayer, SpikeNSlabLayer1
+from layer import SpikeNSlabLayer, NormalLayer, SpikeNSlabLayer1, SpikeNSlabLayerModified
 # from layer_with_laplace import SpikeNLaplaceSlabLayer, NormalLayer
 from tools import cross_entropy
 
@@ -117,7 +117,7 @@ class FeatureSelectionBNNClassification(nn.Module):
         self.rho_prior = torch.Tensor([np.log(np.exp(1.3) - 1)]).to(device)
         self.device = device
 
-        self.l1 = SpikeNSlabLayer1(data_dim, hidden_dim[0], self.rho_prior, self.device, flag=False)
+        self.l1 = SpikeNSlabLayerModified(data_dim, hidden_dim[0], self.rho_prior, self.device)
         self.l1_relu = nn.ReLU()
         self.l2 = NormalLayer(hidden_dim[0], hidden_dim[1], self.rho_prior, self.device)
         self.l2_relu = nn.ReLU()

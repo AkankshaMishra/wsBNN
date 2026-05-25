@@ -1,4 +1,5 @@
-#Modified: 5 July 2024
+#Created: 5 July 2024
+#Modified: 23 Oct 2025
 #Author: Akanksha Mishra
 import torch
 import torch.nn as nn
@@ -6,8 +7,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import datetime
 import time
+import os
+import psutil
 import sys
-sys.path.insert(0, '/workspace/classification')
+sys.path.insert(0, '/home/akansha/projects/wsbnn-sbnn/classification')
 
 from tools import sigmoid
 from sklearn.model_selection import train_test_split
@@ -15,6 +18,7 @@ from sparse_bnn_classification_vhd import SparseBNNClassification
 from scipy.stats import norm
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, accuracy_score, precision_score, recall_score, f1_score, classification_report
 from scipy.special import expit
+import resource
 
 start_time = time.time()
 torch.set_default_dtype(torch.float64)
@@ -25,8 +29,13 @@ else:
     device = torch.device('cpu')
 print(device)
 
-curr_dir = "/workspace/classification/friedman"
+curr_dir = "/home/akansha/projects/wsbnn-sbnn/classification/friedman"
 code = "sbnn_samplemean"
+
+def get_memory_usage():
+    process = psutil.Process(os.getpid())
+    mem_bytes = process.memory_info().rss  # Resident Set Size
+    return mem_bytes / (1024 ** 2)  # Convert to MiB
 
 start_date_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -75,7 +84,7 @@ total = (data_dim+1) * hidden_dim[0] + (hidden_dim[0]+1) * hidden_dim[1] + (hidd
 a = np.log(total) + 0.1*(np.log(hidden_dim[0]) + 0.1*np.log(hidden_dim[1]) + 0.1*np.log(hidden_dim[2]) + np.log(np.sqrt(data_size)*data_dim))
 lm = 1/np.exp(a)
 phi_prior = torch.tensor(lm)
-temp = 0.5
+temp = 0.7
 
 train_Loss = []
 test_Loss = []
@@ -92,7 +101,7 @@ data_size = 3600
 metrics_header = "Run\tTest Accuracy\tPrecision\tRecall\tF1 Score\n"
 metrics_rows = []
 
-for k in range(1, 11):
+for k in range(1, 2):
     # Set seed for each run
     np.random.seed(k)
     torch.manual_seed(k)
@@ -112,6 +121,14 @@ for k in range(1, 11):
     train_accuracy = []
     test_accuracy = []
     val_accuracy = []
+
+    # ===== Start timing and peak memory tracking =====
+    start_train_time = time.perf_counter()
+    start_mem = get_memory_usage()
+
+    # Reset peak usage before training
+    if sys.platform != "win32":
+        resource.setrlimit(resource.RLIMIT_AS, (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
 
     for epoch in range(epochs):  # loop over the dataset multiple times
         train_losses = []
@@ -169,7 +186,44 @@ for k in range(1, 11):
     print('Epoch {}, Train_Loss: {}'.format(epoch, np.mean(train_losses)))
     print('Finished Training')
 
-    torch.save(net.state_dict(), f"{curr_dir}/{code}/model_run{k}.pth")
+    # ===== End timing and measure peak memory =====
+    end_train_time = time.perf_counter()
+    train_time_sec = end_train_time - start_train_time
+
+    if sys.platform == "win32":
+        process = psutil.Process(os.getpid())
+        peak_mem = process.memory_info().peak_wset / (1024 ** 2)  # MB
+    else:
+        usage = resource.getrusage(resource.RUSAGE_SELF)
+        peak_mem = usage.ru_maxrss / 1024  # MB on Linux
+
+    print(f"Training time: {train_time_sec:.2f} sec")
+    print(f"Peak memory usage during training: {peak_mem:.2f} MB")
+
+    # ---------------------------------------------------------------------------------
+    # ✅ Save the entire model + useful information for each run
+    # ---------------------------------------------------------------------------------
+    save_path = f"{curr_dir}/{code}/model_run{k}_full.pth"
+    torch.save({
+        'run_id': k,
+        'model': net,  # Save the full model (architecture + weights)
+        'model_state_dict': net.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'training_loss': training_loss,
+        'validation_loss': validation_loss,
+        'train_accuracy': train_accuracy,
+        'val_accuracy': val_accuracy,
+        'test_accuracy': test_accuracy,
+        'epoch': epoch,
+        'train_time_sec': train_time_sec,
+        'peak_memory_MB': peak_mem,
+        'phi_prior': phi_prior,
+        'hidden_dim': hidden_dim,
+        'data_dim': data_dim,
+        'timestamp': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }, save_path)
+
+    print(f"✅ Full model and training history saved to: {save_path}")
 
     # sparsity level
     print('l1.w_theta final: {}'.format(net.module.l1.w_theta))
@@ -292,6 +346,8 @@ with open(f"{curr_dir}/{code}/metrics.txt", "a") as metrics_file:
     metrics_file.write(f"Start Time: {start_date_time}\n\n")
     metrics_file.write(metrics_table)
     metrics_file.write(f"\nEnd Time: {current_date_time}\n")
+    metrics_file.write(f"Training time: {train_time_sec:.2f} sec\n")
+    metrics_file.write(f"Peak memory usage during training: {peak_mem:.2f} MB\n")
 
 print("\nTotal Execution Time: {} seconds".format(execution_time))
 print(start_date_time)
